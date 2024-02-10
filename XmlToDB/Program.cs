@@ -12,7 +12,8 @@ namespace ConsoleApp
             Console.Write("Введите путь к файлу: ");
             xml = Console.ReadLine();
 
-            DBConnectionHelper.Connect(xml);
+            DBConnectionHelper dBConnectionHelper = new DBConnectionHelper();
+            dBConnectionHelper.Connect(xml);
 
             Console.ReadLine();
         }
