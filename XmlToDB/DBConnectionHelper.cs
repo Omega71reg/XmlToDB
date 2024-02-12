@@ -30,12 +30,25 @@ namespace XmlToDB
 
                 foreach (XmlNode orderNode in orderNodes)
                 {
+                    string Order = orderNode.SelectSingleNode("no").InnerText;
+                    //Проверяем на корректность полей заказа
+                    if (!CheckXMLForCorrectness(orderNode))
+                    {
+                        Console.WriteLine($"Для заказа №{Order} не заполнено одно из полей, Запись невозможна.");
+                        continue;
+                    }
+                    //Проверяем на существующий заказ в БД
+                    if (CheckDBOrder(Order, connection))
+                    {
+                        continue;
+                    }
                     // Извлечение данных из XML для Товаров
                     XmlNodeList productNodes = orderNode.SelectNodes("product");
                     foreach (XmlNode Товар in productNodes)
                     {
                         string productName = Товар.SelectSingleNode("name").InnerText;
                         decimal price = Convert.ToDecimal(Товар.SelectSingleNode("price").InnerText, NumberFormatInfo.InvariantInfo);
+                        //Проверка есть ли в БД товар
                         if (CheckDBProduct(productName, connection))
                             continue;
                         // Создание записи в таблице Товары
@@ -54,6 +67,7 @@ namespace XmlToDB
                     {
                         string FIO = Пользователь.SelectSingleNode("fio").InnerText;
                         string Email = Пользователь.SelectSingleNode("email").InnerText;
+                        //Проверка есть ли в БД пользователь
                         if (CheckDBUser(FIO, connection))
                             continue;
 
@@ -95,11 +109,11 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
                     foreach (XmlNode покупка in delailorder)
                     {
                         int quantity = Convert.ToInt32(покупка.SelectSingleNode("quantity").InnerText);
-                        
+
                         //Запрос ключа для Товары
                         string productName = покупка.SelectSingleNode("name").InnerText;
-                        string ProductID = $"SELECT ProductID FROM Товары WHERE ProductName = '{productName}'"; 
-                        
+                        string ProductID = $"SELECT ProductID FROM Товары WHERE ProductName = '{productName}'";
+
                         string OrderID = orderNode.SelectSingleNode("no").InnerText;
 
 
@@ -175,6 +189,68 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
                     return true;
                 }
             }
+        }
+        private bool CheckDBOrder(string order, SqlConnection connection)
+        {
+            string query = "SELECT COUNT(*) FROM Покупки WHERE OrderID = @order";
+            using (SqlCommand command = new SqlCommand(query, connection))
+            {
+                command.Parameters.AddWithValue("@order", order);
+
+                int count = (int)command.ExecuteScalar();
+
+                if (count == 0)
+                {
+                    return false;
+                }
+                else
+                {
+                    Console.WriteLine($"Данный заказ '{order}' существует в БД. Пропускаем запись.");
+                    return true;
+                }
+            }
+        }
+        private bool CheckXMLForCorrectness(XmlNode orderNode)
+        {
+            bool flag = false;
+            int orderNo;
+            if (Int32.TryParse(orderNode.SelectSingleNode("no")?.InnerText, out orderNo))
+            {
+                {
+                    DateTime regDate;
+                    if (DateTime.TryParseExact(orderNode.SelectSingleNode("reg_date")?.InnerText, "yyyy.MM.dd", null, System.Globalization.DateTimeStyles.None, out regDate))
+                    {
+                        decimal sum;
+                        if (decimal.TryParse(Convert.ToDecimal(orderNode.SelectSingleNode("sum").InnerText, NumberFormatInfo.InvariantInfo).ToString(), out sum))
+                        {
+                            string fio = orderNode.SelectSingleNode("user/fio")?.InnerText;
+                            string email = orderNode.SelectSingleNode("user/email")?.InnerText;
+
+                            if (!string.IsNullOrEmpty(fio) && !string.IsNullOrEmpty(email))
+                            {
+                                XmlNodeList productNodes = orderNode.SelectNodes("product");
+                                foreach (XmlNode Товар in productNodes)
+                                {
+                                    string quantity = "";
+                                    string name = "";
+                                    string price = "";
+                                    flag = false;
+                                    quantity = Товар.SelectSingleNode("quantity")?.InnerText;
+                                    name = Товар.SelectSingleNode("name")?.InnerText;
+                                    price = Товар.SelectSingleNode("price")?.InnerText;
+                                    bool temp = (!string.IsNullOrEmpty(quantity) && !string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(price));
+                                    if (temp)
+                                    {
+                                        flag = true;
+                                    }
+                                    if (!temp) break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return flag;
         }
     }
 }
