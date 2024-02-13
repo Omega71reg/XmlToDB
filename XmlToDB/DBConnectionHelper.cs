@@ -16,12 +16,12 @@ namespace XmlToDB
             //Получение строки из конфига
             string ConnectionString = ConfigurationManager.ConnectionStrings["DefaultConnection"].ConnectionString;
             SqlConnection connection = new SqlConnection(ConnectionString);
+            // Открываем подключение
+            connection.Open();
+            // Начинаем транзакцию
+            SqlTransaction transaction = connection.BeginTransaction(); ;
             try
             {
-                // Открываем подключение
-                connection.Open();
-                Console.WriteLine("Подключение открыто");
-
                 XmlDocument xmlDoc = new XmlDocument();
                 xmlDoc.Load(xml);
 
@@ -38,7 +38,7 @@ namespace XmlToDB
                         continue;
                     }
                     //Проверяем на существующий заказ в БД
-                    if (CheckDBOrder(Order, connection))
+                    if (CheckDBOrder(Order, connection, transaction))
                     {
                         continue;
                     }
@@ -49,11 +49,11 @@ namespace XmlToDB
                         string productName = Товар.SelectSingleNode("name").InnerText;
                         decimal price = Convert.ToDecimal(Товар.SelectSingleNode("price").InnerText, NumberFormatInfo.InvariantInfo);
                         //Проверка есть ли в БД товар
-                        if (CheckDBProduct(productName, connection))
+                        if (CheckDBProduct(productName, connection, transaction))
                             continue;
                         // Создание записи в таблице Товары
                         string productQuery = $"INSERT INTO Товары (productName, price) VALUES (@Name, @Price)";
-                        using (SqlCommand productCommand = new SqlCommand(productQuery, connection))
+                        using (SqlCommand productCommand = new SqlCommand(productQuery, connection, transaction))
                         {
                             productCommand.Parameters.AddWithValue("@Name", productName);
                             productCommand.Parameters.AddWithValue("@Price", price);
@@ -68,12 +68,12 @@ namespace XmlToDB
                         string FIO = Пользователь.SelectSingleNode("fio").InnerText;
                         string Email = Пользователь.SelectSingleNode("email").InnerText;
                         //Проверка есть ли в БД пользователь
-                        if (CheckDBUser(FIO, connection))
+                        if (CheckDBUser(FIO, connection, transaction))
                             continue;
 
                         // Создание записи в таблице Пользователи
                         string employeeQuery = "INSERT INTO Пользователи (FIO, Email) VALUES  (@FIO, @Email)";
-                        using (SqlCommand employeeCommand = new SqlCommand(employeeQuery, connection))
+                        using (SqlCommand employeeCommand = new SqlCommand(employeeQuery, connection, transaction))
                         {
                             employeeCommand.Parameters.AddWithValue("@FIO", FIO);
                             employeeCommand.Parameters.AddWithValue("@Email", Email);
@@ -94,7 +94,7 @@ namespace XmlToDB
                         // Создание записи в таблице Покупки
                         string orderQuery = @$"SET IDENTITY_INSERT Покупки ON
 INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@OrderID, ({EmployeeID}), @OrderDate, @sum)";
-                        using (SqlCommand employeeCommand = new SqlCommand(orderQuery, connection))
+                        using (SqlCommand employeeCommand = new SqlCommand(orderQuery, connection, transaction))
                         {
                             employeeCommand.Parameters.AddWithValue("@OrderID", OrderID);
                             employeeCommand.Parameters.AddWithValue("@OrderDate", OrderDate);
@@ -119,7 +119,7 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
 
                         // Создание записи в таблице Покупки
                         string orderQuery = $"INSERT INTO ДеталиПокупок (OrderID, ProductID, quantity) VALUES  (@OrderID, ({ProductID}), @quantity)";
-                        using (SqlCommand detailorderCommand = new SqlCommand(orderQuery, connection))
+                        using (SqlCommand detailorderCommand = new SqlCommand(orderQuery, connection, transaction))
                         {
                             detailorderCommand.Parameters.AddWithValue("@OrderID", OrderID);
                             detailorderCommand.Parameters.AddWithValue("@quantity", quantity);
@@ -127,6 +127,8 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
                             деталипокупок += detailorderCommand.ExecuteNonQuery();
                         }
                     }
+                    // Подтвердить транзакцию
+                    transaction.Commit();
                 }
                 Console.WriteLine($"Данные из XML файла успешно загружены в базу данных для таблицы товары. В Количестве: {товары}");
                 Console.WriteLine($"Данные из XML файла успешно загружены в базу данных для таблицы пользователи. В Количестве: {пользователи}");
@@ -136,10 +138,14 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
             catch (SqlException ex)
             {
                 Console.WriteLine($"Ошибка подключения: {ex.Message}");
+                // Откатить транзакцию в случае ошибки
+                transaction.Rollback();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Ошибка: {ex.Message}");
+                // Откатить транзакцию в случае ошибки
+                transaction.Rollback();
             }
             finally
             {
@@ -152,10 +158,10 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
                 }
             }
         }
-        private bool CheckDBProduct(string productName, SqlConnection connection)
+        private bool CheckDBProduct(string productName, SqlConnection connection, SqlTransaction transaction)
         {
             string query = "SELECT COUNT(*) FROM Товары WHERE ProductName = @productName";
-            using (SqlCommand command = new SqlCommand(query, connection))
+            using (SqlCommand command = new SqlCommand(query, connection, transaction))
             {
                 command.Parameters.AddWithValue("@productName", productName);
 
@@ -171,10 +177,10 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
                 }
             }
         }
-        private bool CheckDBUser(string user, SqlConnection connection)
+        private bool CheckDBUser(string user, SqlConnection connection, SqlTransaction transaction)
         {
             string query = "SELECT COUNT(*) FROM Пользователи WHERE FIO = @user";
-            using (SqlCommand command = new SqlCommand(query, connection))
+            using (SqlCommand command = new SqlCommand(query, connection, transaction))
             {
                 command.Parameters.AddWithValue("@user", user);
 
@@ -190,10 +196,10 @@ INSERT INTO Покупки (OrderID, EmployeeID, OrderDate, Sum) VALUES  (@Order
                 }
             }
         }
-        private bool CheckDBOrder(string order, SqlConnection connection)
+        private bool CheckDBOrder(string order, SqlConnection connection, SqlTransaction transaction)
         {
             string query = "SELECT COUNT(*) FROM Покупки WHERE OrderID = @order";
-            using (SqlCommand command = new SqlCommand(query, connection))
+            using (SqlCommand command = new SqlCommand(query, connection, transaction))
             {
                 command.Parameters.AddWithValue("@order", order);
 
